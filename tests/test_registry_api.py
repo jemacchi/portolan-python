@@ -94,6 +94,45 @@ def test_load_registry_entries_supports_catalog_ids_include_stale_and_limit() ->
     assert [(entry.id, entry.status) for entry in entries] == [("catalog-b", "stale")]
 
 
+def test_load_registry_entries_skips_invalid_link_shapes() -> None:
+    registry = {
+        "links": [
+            "not an object",
+            {"rel": "item", "href": "https://example.test/item.json"},
+            {"rel": "child", "href": "https://example.test/missing-id/catalog.json"},
+            {"rel": "child", "href": 5, "portolan_registry:id": "bad-href"},
+            {
+                "rel": "child",
+                "href": "https://example.test/no-status/catalog.json",
+                "title": 7,
+                "portolan_registry:id": "no-status",
+            },
+        ]
+    }
+
+    hidden = load_registry_entries(
+        "https://registry.test/catalogs.json",
+        fetch_json=lambda url: registry,
+    )
+    included = load_registry_entries(
+        "https://registry.test/catalogs.json",
+        fetch_json=lambda url: registry,
+        include_stale=True,
+    )
+
+    assert hidden == []
+    assert [(entry.id, entry.title, entry.status) for entry in included] == [
+        ("no-status", None, None)
+    ]
+
+
+def test_load_registry_entries_returns_empty_when_links_are_missing() -> None:
+    assert (
+        load_registry_entries("https://registry.test/catalogs.json", fetch_json=lambda url: {})
+        == []
+    )
+
+
 def test_download_registry_catalog_writes_snapshot_with_absolute_asset_hrefs(
     tmp_path: Path,
 ) -> None:
@@ -166,3 +205,78 @@ def test_download_registry_catalog_recurses_nested_catalogs_and_uses_fallback_id
         (catalog_root / "theme" / "roads" / "collection.json").read_text(encoding="utf-8")
     )
     assert collection["assets"]["data"]["href"] == "https://example.test/nested/theme/roads.parquet"
+
+
+def test_download_registry_catalog_ignores_invalid_children_and_asset_shapes(
+    tmp_path: Path,
+) -> None:
+    responses: dict[str, dict[str, Any]] = {
+        "https://example.test/demo/catalog.json": {
+            "type": "Catalog",
+            "id": "demo",
+            "links": [
+                "not an object",
+                {"rel": "child", "href": 100},
+                {"rel": "child", "href": "./ignored/item.json"},
+                {"rel": "child", "href": "./roads/collection.json"},
+            ],
+        },
+        "https://example.test/demo/ignored/item.json": {
+            "type": "Feature",
+            "id": "ignored",
+            "links": [],
+        },
+        "https://example.test/demo/roads/collection.json": {
+            "type": "Collection",
+            "id": "roads",
+            "links": [],
+            "assets": {
+                "bad": "not an object",
+                "missing_href": {"type": "application/vnd.apache.parquet"},
+                "data": {"href": "./roads.parquet"},
+            },
+        },
+    }
+
+    catalog_root = download_registry_catalog(
+        "https://example.test/demo/catalog.json",
+        tmp_path,
+        fetch_json=lambda url: responses[url],
+    )
+
+    collection = json.loads(
+        (catalog_root / "roads" / "collection.json").read_text(encoding="utf-8")
+    )
+    assert not (catalog_root / "ignored" / "item.json").exists()
+    assert collection["assets"]["bad"] == "not an object"
+    assert collection["assets"]["missing_href"] == {"type": "application/vnd.apache.parquet"}
+    assert collection["assets"]["data"]["href"] == "https://example.test/demo/roads/roads.parquet"
+
+
+def test_download_registry_catalog_handles_collections_without_asset_objects(
+    tmp_path: Path,
+) -> None:
+    responses: dict[str, dict[str, Any]] = {
+        "https://example.test/demo/catalog.json": {
+            "type": "Catalog",
+            "id": "demo",
+            "links": [{"rel": "child", "href": "./roads/collection.json"}],
+        },
+        "https://example.test/demo/roads/collection.json": {
+            "type": "Collection",
+            "id": "roads",
+            "links": [],
+            "assets": [],
+        },
+    }
+
+    catalog_root = download_registry_catalog(
+        "https://example.test/demo/catalog.json",
+        tmp_path,
+        fetch_json=lambda url: responses[url],
+    )
+
+    collection = json.loads(
+        (catalog_root / "roads" / "collection.json").read_text(encoding="utf-8")
+    )
+    assert collection["assets"] == []

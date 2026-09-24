@@ -14,14 +14,24 @@ dependencies = []
 dev = [
   "mypy>=1.18.0",
   "pytest>=8.0.0",
+  "pytest-cov>=6.0.0",
   "ruff>=0.13.0",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "--cov=portolan --cov-report=term-missing --cov-fail-under=85"
 markers = [
   "unit: fast isolated tests",
 ]
+
+[tool.coverage.run]
+branch = true
+source = ["portolan"]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 85
 
 [tool.ruff]
 line-length = 100
