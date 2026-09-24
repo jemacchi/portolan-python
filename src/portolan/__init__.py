@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 from portolan.catalog import Asset, AssetFormat, Catalog, Collection, Item, Link
-from portolan.registry import RegistryCatalogEntry, download_registry_catalog, load_registry_entries
+from portolan.registry import (
+    DEFAULT_REGISTRY_URL,
+    RegistryCatalogEntry,
+    download_registry_catalog,
+    load_registry_entries,
+)
 from portolan.validation import ValidationError, ValidationResult, Validator
 
 __all__ = [
@@ -11,6 +16,7 @@ __all__ = [
     "AssetFormat",
     "Catalog",
     "Collection",
+    "DEFAULT_REGISTRY_URL",
     "Item",
     "Link",
     "RegistryCatalogEntry",
