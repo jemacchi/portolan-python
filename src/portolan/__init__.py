@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from portolan.catalog import Asset, AssetFormat, Catalog, Collection, Item, Link
+from portolan.catalog import Asset, AssetFormat, Catalog, Collection, Item, Link, is_stac_metadata
 from portolan.registry import (
     DEFAULT_REGISTRY_URL,
     RegistryCatalogEntry,
@@ -24,5 +24,6 @@ __all__ = [
     "ValidationResult",
     "Validator",
     "download_registry_catalog",
+    "is_stac_metadata",
     "load_registry_entries",
 ]

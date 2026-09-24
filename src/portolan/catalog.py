@@ -12,6 +12,7 @@ from urllib.parse import unquote, urljoin, urlparse
 from urllib.request import Request, urlopen
 
 JsonObject = dict[str, Any]
+STAC_DOCUMENT_TYPES = frozenset({"Catalog", "Collection", "Feature"})
 
 
 class AssetFormat(Enum):
@@ -181,6 +182,17 @@ class Item:
 
     def assets(self) -> Iterator[Asset]:
         yield from _assets(self._data, self._href)
+
+
+def is_stac_metadata(source: str | Path) -> bool:
+    """Return whether ``source`` is a STAC Catalog, Collection, or Item document."""
+    if isinstance(source, Path) and source.suffix.lower() != ".json":
+        return False
+    try:
+        data = _read_json_href(_source_to_href(source, default_document="catalog.json"))
+    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+        return False
+    return data.get("type") in STAC_DOCUMENT_TYPES
 
 
 def _collections_from_catalog(

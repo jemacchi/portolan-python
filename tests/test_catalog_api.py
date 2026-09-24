@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from portolan import AssetFormat, Catalog, Collection, Item, Validator
+from portolan import AssetFormat, Catalog, Collection, Item, Validator, is_stac_metadata
 
 pytestmark = pytest.mark.unit
 
@@ -310,6 +310,22 @@ def test_documents_ignore_invalid_links_and_assets() -> None:
     assert assets[0].key == "media_type"
     assert assets[0].media_type == "application/vnd.apache.parquet"
     assert assets[0].roles == ("data",)
+
+
+def test_is_stac_metadata_identifies_stac_json_documents(tmp_path: Path) -> None:
+    catalog_path = tmp_path / "catalog.json"
+    style_path = tmp_path / "style.json"
+    data_path = tmp_path / "data.parquet"
+    broken_path = tmp_path / "broken.json"
+    catalog_path.write_text(json.dumps({"type": "Catalog", "id": "demo"}), encoding="utf-8")
+    style_path.write_text(json.dumps({"version": 8, "layers": []}), encoding="utf-8")
+    data_path.write_bytes(b"PAR1")
+    broken_path.write_text("{broken", encoding="utf-8")
+
+    assert is_stac_metadata(catalog_path) is True
+    assert is_stac_metadata(style_path) is False
+    assert is_stac_metadata(data_path) is False
+    assert is_stac_metadata(broken_path) is False
 
 
 def test_collection_items_only_yields_feature_documents(tmp_path: Path) -> None:
