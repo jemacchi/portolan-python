@@ -38,6 +38,11 @@ class Validator:
         """Validate a catalog and return structured findings."""
         errors: list[ValidationError] = []
         _validate_catalog_document(catalog.data, "catalog", errors)
+        for collection in catalog.collections():
+            collection_path = f"collection.{collection.id}"
+            _validate_collection_document(collection.data, collection_path, errors)
+            for item in collection.items():
+                _validate_item_document(item.data, f"item.{item.id}", errors)
         return ValidationResult(errors=tuple(errors))
 
 
@@ -47,6 +52,70 @@ def _validate_catalog_document(data: JsonObject, path: str, errors: list[Validat
     _require_string(data, "id", path, errors)
     _require_string(data, "description", path, errors)
     _validate_links(data, path, errors)
+
+
+def _validate_collection_document(
+    data: JsonObject, path: str, errors: list[ValidationError]
+) -> None:
+    _require_string(data, "type", path, errors)
+    _require_string(data, "stac_version", path, errors)
+    _require_string(data, "id", path, errors)
+    _require_string(data, "description", path, errors)
+    _require_string(data, "license", path, errors)
+    if not isinstance(data.get("extent"), dict):
+        errors.append(
+            ValidationError(
+                code="PTL-STAC-001",
+                path=f"{path}.extent",
+                message="extent is required",
+            )
+        )
+    _validate_links(data, path, errors)
+    _validate_assets(data, path, errors)
+
+
+def _validate_item_document(data: JsonObject, path: str, errors: list[ValidationError]) -> None:
+    _require_string(data, "type", path, errors)
+    _require_string(data, "stac_version", path, errors)
+    _require_string(data, "id", path, errors)
+    _require_string(data, "collection", path, errors)
+    if not isinstance(data.get("properties"), dict):
+        errors.append(
+            ValidationError(
+                code="PTL-STAC-001",
+                path=f"{path}.properties",
+                message="properties is required",
+            )
+        )
+    _validate_links(data, path, errors)
+    _validate_assets(data, path, errors)
+
+
+def _validate_assets(data: JsonObject, path: str, errors: list[ValidationError]) -> None:
+    assets = data.get("assets")
+    if assets is None:
+        return
+    if not isinstance(assets, dict):
+        errors.append(
+            ValidationError(
+                code="PTL-STAC-003",
+                path=f"{path}.assets",
+                message="assets must be an object",
+            )
+        )
+        return
+    for key, asset in assets.items():
+        asset_path = f"{path}.assets.{key}"
+        if not isinstance(asset, dict):
+            errors.append(
+                ValidationError(
+                    code="PTL-STAC-003",
+                    path=asset_path,
+                    message="asset must be an object",
+                )
+            )
+            continue
+        _require_string(asset, "href", asset_path, errors, code="PTL-STAC-003")
 
 
 def _validate_links(data: JsonObject, path: str, errors: list[ValidationError]) -> None:
