@@ -124,12 +124,19 @@ class Collection:
 
     def items(self) -> Iterator[Item]:
         """Yield linked items from this collection."""
-        for link in self.links():
-            if link.rel != "item":
-                continue
+        for link in self.item_links():
             data = _read_json_href(link.href)
             if data.get("type") == "Feature":
                 yield Item(data, link.href)
+
+    def item_links(self) -> Iterator[Link]:
+        """Yield item links owned by this collection.
+
+        A collection can group items behind child catalogs. Those items still
+        belong to the collection, so traversal follows child catalogs and stops
+        at child collections.
+        """
+        yield from _item_links_from_document(self._data, self._href, set())
 
 
 class Item:
@@ -173,6 +180,19 @@ def _collections_from_catalog(
             yield Collection(child, link.href)
         elif child_type == "Catalog":
             yield from _collections_from_catalog(child, link.href, visited)
+
+
+def _item_links_from_document(data: JsonObject, href: str, visited: set[str]) -> Iterator[Link]:
+    if href in visited:
+        return
+    visited.add(href)
+    for link in _links(data, href):
+        if link.rel == "item":
+            yield link
+        elif link.rel == "child":
+            child = _read_json_href(link.href)
+            if child.get("type") == "Catalog":
+                yield from _item_links_from_document(child, link.href, visited)
 
 
 def _links(data: JsonObject, document_href: str) -> Iterator[Link]:

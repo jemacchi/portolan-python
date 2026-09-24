@@ -249,6 +249,60 @@ def test_collection_items_only_yields_feature_documents(tmp_path: Path) -> None:
     assert [item.id for item in collection.items()] == ["road-1"]
 
 
+def test_collection_item_links_descend_organizing_catalogs(tmp_path: Path) -> None:
+    _write_json(
+        tmp_path / "2024" / "catalog.json",
+        {
+            "type": "Catalog",
+            "stac_version": "1.1.0",
+            "id": "roads-2024",
+            "description": "Road scenes",
+            "links": [
+                {"rel": "item", "href": "./road-a.json"},
+                {"rel": "child", "href": "./nested/catalog.json"},
+            ],
+        },
+    )
+    _write_json(
+        tmp_path / "2024" / "nested" / "catalog.json",
+        {
+            "type": "Catalog",
+            "stac_version": "1.1.0",
+            "id": "nested",
+            "description": "Nested scenes",
+            "links": [
+                {"rel": "item", "href": "./road-b.json"},
+                {"rel": "child", "href": "./other/collection.json"},
+            ],
+        },
+    )
+    _write_json(
+        tmp_path / "2024" / "nested" / "other" / "collection.json",
+        {"type": "Collection", "id": "other", "links": []},
+    )
+    _write_json(
+        tmp_path / "2024" / "road-a.json",
+        {"type": "Feature", "id": "road-a", "collection": "roads", "properties": {}},
+    )
+    _write_json(
+        tmp_path / "2024" / "nested" / "road-b.json",
+        {"type": "Feature", "id": "road-b", "collection": "roads", "properties": {}},
+    )
+    collection = Collection(
+        {
+            "type": "Collection",
+            "id": "roads",
+            "links": [{"rel": "child", "href": "./2024/catalog.json"}],
+        },
+        (tmp_path / "collection.json").as_uri(),
+    )
+
+    links = list(collection.item_links())
+
+    assert [link.raw["href"] for link in links] == ["./road-a.json", "./road-b.json"]
+    assert [item.id for item in collection.items()] == ["road-a", "road-b"]
+
+
 def test_item_exposes_links_and_asset_metadata() -> None:
     item = Item(
         {
