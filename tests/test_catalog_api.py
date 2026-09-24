@@ -171,6 +171,37 @@ def test_catalog_open_accepts_string_and_file_uri_sources(tmp_path: Path) -> Non
     assert from_uri.id == "demo"
 
 
+def test_collection_and_item_open_accept_directory_or_file_sources(tmp_path: Path) -> None:
+    _write_json(
+        tmp_path / "roads" / "collection.json",
+        {
+            "type": "Collection",
+            "stac_version": "1.1.0",
+            "id": "roads",
+            "description": "Roads",
+            "links": [],
+        },
+    )
+    _write_json(
+        tmp_path / "roads" / "road-1" / "item.json",
+        {
+            "type": "Feature",
+            "stac_version": "1.1.0",
+            "id": "road-1",
+            "collection": "roads",
+            "properties": {},
+        },
+    )
+
+    collection = Collection.open(tmp_path / "roads")
+    item = Item.open(tmp_path / "roads" / "road-1" / "item.json")
+
+    assert collection.id == "roads"
+    assert collection.href == (tmp_path / "roads" / "collection.json").as_uri()
+    assert item.id == "road-1"
+    assert item.href == (tmp_path / "roads" / "road-1" / "item.json").as_uri()
+
+
 def test_catalog_rejects_non_object_json(tmp_path: Path) -> None:
     (tmp_path / "catalog.json").write_text("[]", encoding="utf-8")
 

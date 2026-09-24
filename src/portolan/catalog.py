@@ -104,6 +104,13 @@ class Collection:
         self._data = data
         self._href = href
 
+    @classmethod
+    def open(cls, source: str | Path) -> Collection:
+        """Open a local or remote STAC Collection document."""
+        href = _source_to_href(source, default_document="collection.json")
+        data = _read_json_href(href)
+        return cls(data, href)
+
     @property
     def id(self) -> str:
         return str(self._data.get("id", ""))
@@ -145,6 +152,13 @@ class Item:
     def __init__(self, data: JsonObject, href: str) -> None:
         self._data = data
         self._href = href
+
+    @classmethod
+    def open(cls, source: str | Path) -> Item:
+        """Open a local or remote STAC Item document."""
+        href = _source_to_href(source, default_document="item.json")
+        data = _read_json_href(href)
+        return cls(data, href)
 
     @property
     def id(self) -> str:
@@ -244,7 +258,7 @@ def _assets(data: JsonObject, document_href: str) -> Iterator[Asset]:
         )
 
 
-def _source_to_href(source: str | Path) -> str:
+def _source_to_href(source: str | Path, *, default_document: str = "catalog.json") -> str:
     if isinstance(source, Path):
         path = source
     else:
@@ -253,7 +267,7 @@ def _source_to_href(source: str | Path) -> str:
             return source
         path = Path(source)
     if path.is_dir():
-        path = path / "catalog.json"
+        path = path / default_document
     return path.resolve().as_uri()
 
 
