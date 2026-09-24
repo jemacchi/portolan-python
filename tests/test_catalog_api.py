@@ -166,6 +166,33 @@ def test_catalog_item_links_descend_child_catalogs_but_not_collections(tmp_path:
         "./root-item.json",
         "./nested-item.json",
     ]
+    assert [link.href for link in catalog.item_links()] == [
+        (tmp_path / "root-item.json").as_uri(),
+        (tmp_path / "nested" / "nested-item.json").as_uri(),
+    ]
+
+
+def test_collection_item_links_preserve_written_href_and_resolve_against_owner() -> None:
+    collection = Collection(
+        {
+            "type": "Collection",
+            "id": "roads",
+            "links": [
+                {
+                    "rel": "item",
+                    "href": "./items/road-a.json",
+                    "type": "application/geo+json",
+                }
+            ],
+        },
+        "https://example.test/catalog/roads/collection.json",
+    )
+
+    [link] = list(collection.item_links())
+
+    assert link.raw["href"] == "./items/road-a.json"
+    assert link.href == "https://example.test/catalog/roads/items/road-a.json"
+    assert link.media_type == "application/geo+json"
 
 
 def test_catalog_open_accepts_directory_path(tmp_path: Path) -> None:
@@ -365,6 +392,10 @@ def test_collection_item_links_descend_organizing_catalogs(tmp_path: Path) -> No
     links = list(collection.item_links())
 
     assert [link.raw["href"] for link in links] == ["./road-a.json", "./road-b.json"]
+    assert [link.href for link in links] == [
+        (tmp_path / "2024" / "road-a.json").as_uri(),
+        (tmp_path / "2024" / "nested" / "road-b.json").as_uri(),
+    ]
     assert [item.id for item in collection.items()] == ["road-a", "road-b"]
 
 
