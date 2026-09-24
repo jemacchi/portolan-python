@@ -96,6 +96,10 @@ class Catalog:
         """Yield child collections, including collections below child catalogs."""
         yield from _collections_from_catalog(self._data, self._href, set())
 
+    def item_links(self) -> Iterator[Link]:
+        """Yield item links owned by this catalog subtree."""
+        yield from _item_links_from_document(self._data, self._href, set())
+
 
 class Collection:
     """A loaded STAC Collection within a Portolan catalog."""

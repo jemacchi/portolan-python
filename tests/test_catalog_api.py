@@ -134,6 +134,40 @@ def test_catalog_traverses_nested_child_catalogs(tmp_path: Path) -> None:
     assert [collection.id for collection in catalog.collections()] == ["roads"]
 
 
+def test_catalog_item_links_descend_child_catalogs_but_not_collections(tmp_path: Path) -> None:
+    _write_json(
+        tmp_path / "catalog.json",
+        {
+            "type": "Catalog",
+            "id": "organizer",
+            "links": [
+                {"rel": "item", "href": "./root-item.json"},
+                {"rel": "child", "href": "./nested/catalog.json"},
+                {"rel": "child", "href": "./roads/collection.json"},
+            ],
+        },
+    )
+    _write_json(
+        tmp_path / "nested" / "catalog.json",
+        {
+            "type": "Catalog",
+            "id": "nested",
+            "links": [{"rel": "item", "href": "./nested-item.json"}],
+        },
+    )
+    _write_json(
+        tmp_path / "roads" / "collection.json",
+        {"type": "Collection", "id": "roads", "links": [{"rel": "item", "href": "./road.json"}]},
+    )
+
+    catalog = Catalog.open(tmp_path)
+
+    assert [link.raw["href"] for link in catalog.item_links()] == [
+        "./root-item.json",
+        "./nested-item.json",
+    ]
+
+
 def test_catalog_open_accepts_directory_path(tmp_path: Path) -> None:
     _write_json(
         tmp_path / "catalog.json",
