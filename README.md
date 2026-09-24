@@ -200,4 +200,10 @@ The Portolan specification remains the source of truth.
 7. External applications should not need to reimplement Portolan semantics.
 8. The library should be suitable as a dependency of long-lived applications.
 
+## Local documentation
+
+- [Scope](docs/scope.md) defines what belongs in this core library.
+- [Examples](docs/examples.md) shows basic API usage.
+- [Development](docs/development.md) lists setup, test, and build commands.
+
 ---
