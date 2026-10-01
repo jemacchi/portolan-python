@@ -205,5 +205,6 @@ The Portolan specification remains the source of truth.
 - [Scope](docs/scope.md) defines what belongs in this core library.
 - [Examples](docs/examples.md) shows basic API usage.
 - [Development](docs/development.md) lists setup, test, and build commands.
+- [Distribution](docs/distribution.md) explains releases, `pip`, and PyPI publishing.
 
 ---
