@@ -1,7 +1,7 @@
 # Distribution
 
 Tagged releases provide immutable Python source and wheel archives. PyPI is the
-preferred package index once its trusted publisher is configured.
+preferred package index for published versions.
 
 ## Release artifacts
 
@@ -30,25 +30,12 @@ python -m pip install \
 
 This path needs no package index account.
 
-## Publish to PyPI
+## Install from PyPI
 
-The workflow supports PyPI trusted publishing. It uses a short-lived identity
-token, so the repository does not store a permanent PyPI API token.
-
-Complete these steps once:
-
-1. Create the `portolan-python` project on PyPI, or add a pending publisher.
-2. Add a trusted GitHub publisher for `jemacchi/portolan-python`.
-3. Set the workflow name to `release.yml` and the environment to `pypi`.
-4. Create the `pypi` environment in the GitHub repository.
-5. Add the repository variable `PUBLISH_PYPI` with the value `true`.
-
-After this setup, each valid version tag also publishes to PyPI. Consumers can
-then use the normal command:
+Install a published version from PyPI with:
 
 ```bash
 python -m pip install portolan-python==0.1.0
 ```
 
-PyPI does not permit replacing a published version. Increase the version before
-you publish another release.
+Omit the version constraint to install the latest published version.
