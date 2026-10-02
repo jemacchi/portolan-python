@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from email.message import Message
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError
@@ -324,7 +325,7 @@ def test_download_registry_catalog_preserves_snapshot_when_child_fetch_fails(
                 "id": "demo",
                 "links": [{"rel": "child", "href": "./missing.json"}],
             }
-        raise HTTPError(url, 503, "Unavailable", hdrs=None, fp=None)
+        raise HTTPError(url, 503, "Unavailable", hdrs=Message(), fp=None)
 
     with pytest.raises(HTTPError):
         download_registry_catalog(root_url, tmp_path, fetch_json=fetch_json)
