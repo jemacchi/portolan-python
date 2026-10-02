@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
+import tempfile
 from collections.abc import Callable
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.error import HTTPError
 from urllib.parse import urljoin, urlparse
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 JsonObject = dict[str, Any]
 
@@ -70,6 +75,7 @@ def download_registry_catalog(
     catalog_url: str,
     output_dir: Path,
     *,
+    expected_catalog_id: str | None = None,
     fetch_json: Callable[[str], JsonObject] | None = None,
 ) -> Path:
     """Download a published catalog snapshot for local workflows."""
@@ -77,17 +83,34 @@ def download_registry_catalog(
     fetch = fetch_json or _fetch_json
     catalog = fetch(catalog_url)
     catalog_id = str(catalog.get("id") or _fallback_catalog_id(catalog_url))
-    if catalog_id in {"", ".", ".."} or Path(catalog_id).name != catalog_id or "\\" in catalog_id:
-        raise ValueError(f"Catalog id must be a safe directory name: {catalog_id}")
+    _validate_catalog_id(catalog_id)
+    if expected_catalog_id is not None:
+        _validate_catalog_id(expected_catalog_id)
+        if catalog_id != expected_catalog_id:
+            raise ValueError(
+                f"Catalog id '{catalog_id}' does not match registry id '{expected_catalog_id}'"
+            )
     catalog_root = output_dir / catalog_id
-    _write_catalog_tree(catalog_url, catalog, catalog_url, catalog_root, fetch)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    with _catalog_lock(output_dir, catalog_id):
+        _validate_catalog_root(output_dir, catalog_root)
+        staging_root = Path(
+            tempfile.mkdtemp(prefix=f".{catalog_id}.staging-", dir=output_dir.resolve())
+        )
+        try:
+            _write_catalog_tree(catalog_url, catalog, catalog_url, staging_root, fetch)
+            _publish_snapshot(staging_root, catalog_root, output_dir)
+        except BaseException:
+            shutil.rmtree(staging_root, ignore_errors=True)
+            raise
     return catalog_root
 
 
 def _fetch_json(url: str) -> JsonObject:
     _validate_remote_url(url)
     request = Request(url, headers={"User-Agent": "portolan-python"})
-    with urlopen(request, timeout=30) as response:
+    opener = build_opener(_SameOriginRedirectHandler(url))
+    with opener.open(request, timeout=30) as response:
         data = json.loads(response.read().decode("utf-8"))
     if not isinstance(data, dict):
         raise TypeError(f"Expected JSON object from {url}")
@@ -98,6 +121,75 @@ def _validate_remote_url(url: str) -> None:
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         raise ValueError(f"Registry URL must use HTTP or HTTPS: {url}")
+
+
+class _SameOriginRedirectHandler(HTTPRedirectHandler):
+    def __init__(self, original_url: str) -> None:
+        self._origin = _url_origin(original_url)
+        super().__init__()
+
+    def redirect_request(
+        self,
+        req: Request,
+        fp: Any,
+        code: int,
+        msg: str,
+        headers: Any,
+        newurl: str,
+    ) -> Request | None:
+        if _url_origin(newurl) != self._origin:
+            raise HTTPError(newurl, code, f"Redirect changed origin: {newurl}", headers, fp)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _url_origin(url: str) -> tuple[str, str]:
+    parsed = urlparse(url)
+    return parsed.scheme.lower(), parsed.netloc.lower()
+
+
+def _validate_catalog_id(catalog_id: str) -> None:
+    if catalog_id in {"", ".", ".."} or Path(catalog_id).name != catalog_id or "\\" in catalog_id:
+        raise ValueError(f"Catalog id must be a safe directory name: {catalog_id}")
+
+
+@contextmanager
+def _catalog_lock(output_dir: Path, catalog_id: str) -> Any:
+    lock_path = output_dir.resolve() / f".{catalog_id}.lock"
+    try:
+        descriptor = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    except FileExistsError as err:
+        raise RuntimeError(f"Catalog download is already in progress: {catalog_id}") from err
+    os.close(descriptor)
+    try:
+        yield
+    finally:
+        lock_path.unlink(missing_ok=True)
+
+
+def _validate_catalog_root(output_dir: Path, catalog_root: Path) -> None:
+    if catalog_root.is_symlink():
+        raise ValueError(f"Catalog directory must not be a symlink: {catalog_root}")
+    if not catalog_root.resolve().is_relative_to(output_dir.resolve()):
+        raise ValueError(f"Catalog directory escapes output directory: {catalog_root}")
+
+
+def _publish_snapshot(staging_root: Path, catalog_root: Path, output_dir: Path) -> None:
+    _validate_catalog_root(output_dir, catalog_root)
+    backup_root = Path(
+        tempfile.mkdtemp(prefix=f".{catalog_root.name}.backup-", dir=output_dir.resolve())
+    )
+    backup_root.rmdir()
+    had_previous = catalog_root.exists()
+    if had_previous:
+        catalog_root.rename(backup_root)
+    try:
+        staging_root.rename(catalog_root)
+    except BaseException:
+        if had_previous:
+            backup_root.rename(catalog_root)
+        raise
+    if had_previous:
+        shutil.rmtree(backup_root)
 
 
 def _write_catalog_tree(
@@ -137,9 +229,7 @@ def _write_catalog_tree(
         child_target = _target_document_path(root_url, child_url, output_root)
         owner = targets.get(child_target)
         if owner is not None and owner != child_url:
-            raise ValueError(
-                f"Registry documents map to the same local path: {owner}, {child_url}"
-            )
+            raise ValueError(f"Registry documents map to the same local path: {owner}, {child_url}")
         child = fetch_json(child_url)
         if child.get("type") in {"Catalog", "Collection"}:
             _write_catalog_tree(

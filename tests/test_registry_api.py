@@ -5,10 +5,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any
+from urllib.error import HTTPError
+from urllib.request import Request
 
 import pytest
 
 from portolan import download_registry_catalog, load_registry_entries
+from portolan.registry import _SameOriginRedirectHandler
 
 pytestmark = pytest.mark.unit
 
@@ -266,14 +269,82 @@ def test_download_registry_catalog_rejects_symlink_escape(tmp_path: Path) -> Non
         child_url: _collection("linked", {}),
     }
 
-    with pytest.raises(ValueError, match="escapes catalog root"):
-        download_registry_catalog(
-            root_url,
-            output_dir,
-            fetch_json=lambda url: responses[url],
-        )
+    download_registry_catalog(
+        root_url,
+        output_dir,
+        fetch_json=lambda url: responses[url],
+    )
 
     assert not (outside_dir / "collection.json").exists()
+    assert (catalog_root / "linked" / "collection.json").exists()
+
+
+def test_download_registry_catalog_rejects_catalog_root_symlink(tmp_path: Path) -> None:
+    output_dir = tmp_path / "output"
+    outside_dir = tmp_path / "outside"
+    output_dir.mkdir()
+    outside_dir.mkdir()
+    (output_dir / "demo").symlink_to(outside_dir, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="Catalog directory must not be a symlink"):
+        download_registry_catalog(
+            "https://example.test/demo/catalog.json",
+            output_dir,
+            fetch_json=lambda url: {"type": "Catalog", "id": "demo", "links": []},
+        )
+
+    assert list(outside_dir.iterdir()) == []
+
+
+def test_download_registry_catalog_rejects_registry_id_mismatch(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="does not match registry id"):
+        download_registry_catalog(
+            "https://example.test/demo/catalog.json",
+            tmp_path,
+            expected_catalog_id="selected-catalog",
+            fetch_json=lambda url: {"type": "Catalog", "id": "other-catalog", "links": []},
+        )
+
+    assert not (tmp_path / "selected-catalog").exists()
+
+
+def test_download_registry_catalog_preserves_snapshot_when_child_fetch_fails(
+    tmp_path: Path,
+) -> None:
+    catalog_root = tmp_path / "demo"
+    catalog_root.mkdir()
+    previous = catalog_root / "catalog.json"
+    previous.write_text('{"id": "previous"}\n', encoding="utf-8")
+    root_url = "https://example.test/demo/catalog.json"
+
+    def fetch_json(url: str) -> dict[str, Any]:
+        if url == root_url:
+            return {
+                "type": "Catalog",
+                "id": "demo",
+                "links": [{"rel": "child", "href": "./missing.json"}],
+            }
+        raise HTTPError(url, 503, "Unavailable", hdrs=None, fp=None)
+
+    with pytest.raises(HTTPError):
+        download_registry_catalog(root_url, tmp_path, fetch_json=fetch_json)
+
+    assert previous.read_text(encoding="utf-8") == '{"id": "previous"}\n'
+    assert not list(tmp_path.glob(".demo.staging-*"))
+
+
+def test_same_origin_redirect_handler_rejects_cross_origin_redirect() -> None:
+    handler = _SameOriginRedirectHandler("https://example.test/demo/catalog.json")
+
+    with pytest.raises(HTTPError, match="Redirect changed origin"):
+        handler.redirect_request(
+            Request("https://example.test/demo/child.json"),
+            fp=None,
+            code=302,
+            msg="Found",
+            headers={},
+            newurl="http://127.0.0.1/private",
+        )
 
 
 def test_download_registry_catalog_rejects_local_path_collisions(tmp_path: Path) -> None:
