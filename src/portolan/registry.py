@@ -56,7 +56,7 @@ def load_registry_entries(
         entries.append(
             RegistryCatalogEntry(
                 id=registry_id,
-                url=href,
+                url=urljoin(registry_url, href),
                 title=title if isinstance(title, str) else None,
                 status=status if isinstance(status, str) else None,
             )
@@ -107,13 +107,19 @@ def _write_catalog_tree(
     output_root: Path,
     fetch_json: Callable[[str], JsonObject],
     visited: set[str] | None = None,
+    targets: dict[Path, str] | None = None,
 ) -> None:
     if visited is None:
         visited = set()
+    if targets is None:
+        targets = {}
     visited.add(document_url)
 
-    relative_path = _relative_document_path(root_url, document_url)
-    target = output_root / relative_path
+    target = _target_document_path(root_url, document_url, output_root)
+    owner = targets.get(target)
+    if owner is not None and owner != document_url:
+        raise ValueError(f"Registry documents map to the same local path: {owner}, {document_url}")
+    targets[target] = document_url
     target.parent.mkdir(parents=True, exist_ok=True)
     if document.get("type") == "Collection":
         document = _with_absolute_asset_hrefs(document_url, document)
@@ -128,9 +134,23 @@ def _write_catalog_tree(
         child_url = urljoin(document_url, href)
         if child_url in visited:
             continue
+        child_target = _target_document_path(root_url, child_url, output_root)
+        owner = targets.get(child_target)
+        if owner is not None and owner != child_url:
+            raise ValueError(
+                f"Registry documents map to the same local path: {owner}, {child_url}"
+            )
         child = fetch_json(child_url)
         if child.get("type") in {"Catalog", "Collection"}:
-            _write_catalog_tree(child_url, child, root_url, output_root, fetch_json, visited)
+            _write_catalog_tree(
+                child_url,
+                child,
+                root_url,
+                output_root,
+                fetch_json,
+                visited,
+                targets,
+            )
 
 
 def _with_absolute_asset_hrefs(document_url: str, collection: JsonObject) -> JsonObject:
@@ -155,13 +175,31 @@ def _with_absolute_asset_hrefs(document_url: str, collection: JsonObject) -> Jso
 
 
 def _relative_document_path(root_url: str, document_url: str) -> Path:
-    root_path = Path(urlparse(root_url).path).parent
-    document_path = Path(urlparse(document_url).path)
+    root = urlparse(root_url)
+    document = urlparse(document_url)
+    if (document.scheme.lower(), document.netloc.lower()) != (
+        root.scheme.lower(),
+        root.netloc.lower(),
+    ):
+        raise ValueError(f"Child document has a different origin: {document_url}")
+    root_path = Path(root.path).parent
+    document_path = Path(document.path)
     try:
-        relative = document_path.relative_to(root_path)
-    except ValueError:
-        return Path(document_path.name or "catalog.json")
-    return relative
+        relative_path = document_path.relative_to(root_path)
+    except ValueError as err:
+        raise ValueError(f"Child document is outside catalog root: {document_url}") from err
+    if ".." in relative_path.parts:
+        raise ValueError(f"Child document is outside catalog root: {document_url}")
+    return relative_path
+
+
+def _target_document_path(root_url: str, document_url: str, output_root: Path) -> Path:
+    relative_path = _relative_document_path(root_url, document_url)
+    resolved_root = output_root.resolve()
+    target = (output_root / relative_path).resolve()
+    if not target.is_relative_to(resolved_root):
+        raise ValueError(f"Child document escapes catalog root: {document_url}")
+    return target
 
 
 def _fallback_catalog_id(catalog_url: str) -> str:

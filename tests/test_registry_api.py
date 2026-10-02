@@ -57,6 +57,26 @@ def test_load_registry_entries_filters_to_valid_children() -> None:
     ]
 
 
+def test_load_registry_entries_resolves_relative_child_urls() -> None:
+    registry = {
+        "links": [
+            {
+                "rel": "child",
+                "href": "../demo/catalog.json",
+                "portolan_registry:id": "demo",
+                "portolan_registry:status": "valid",
+            }
+        ]
+    }
+
+    entries = load_registry_entries(
+        "https://registry.test/exports/catalogs.json",
+        fetch_json=lambda url: registry,
+    )
+
+    assert entries[0].url == "https://registry.test/demo/catalog.json"
+
+
 def test_load_registry_entries_supports_catalog_ids_include_stale_and_limit() -> None:
     registry = {
         "links": [
@@ -194,6 +214,94 @@ def test_download_registry_catalog_skips_child_cycles(tmp_path: Path) -> None:
     download_registry_catalog(root_url, tmp_path, fetch_json=fetch_json)
 
     assert fetched_urls == [root_url, child_url]
+
+
+@pytest.mark.parametrize(
+    ("child_url", "message"),
+    [
+        ("https://other.test/demo/collection.json", "different origin"),
+        ("https://example.test/demo/../../outside.json", "outside catalog root"),
+    ],
+)
+def test_download_registry_catalog_rejects_unsafe_child_urls_before_fetch(
+    child_url: str,
+    message: str,
+    tmp_path: Path,
+) -> None:
+    root_url = "https://example.test/demo/catalog.json"
+    catalog = {
+        "type": "Catalog",
+        "id": "demo",
+        "links": [{"rel": "child", "href": child_url}],
+    }
+    fetched_urls: list[str] = []
+
+    def fetch_json(url: str) -> dict[str, Any]:
+        fetched_urls.append(url)
+        if url != root_url:
+            raise AssertionError(f"Fetched unsafe child URL: {url}")
+        return catalog
+
+    with pytest.raises(ValueError, match=message):
+        download_registry_catalog(root_url, tmp_path, fetch_json=fetch_json)
+
+    assert fetched_urls == [root_url]
+
+
+def test_download_registry_catalog_rejects_symlink_escape(tmp_path: Path) -> None:
+    root_url = "https://example.test/demo/catalog.json"
+    child_url = "https://example.test/demo/linked/collection.json"
+    output_dir = tmp_path / "output"
+    outside_dir = tmp_path / "outside"
+    catalog_root = output_dir / "demo"
+    outside_dir.mkdir()
+    catalog_root.mkdir(parents=True)
+    (catalog_root / "linked").symlink_to(outside_dir, target_is_directory=True)
+    responses = {
+        root_url: {
+            "type": "Catalog",
+            "id": "demo",
+            "links": [{"rel": "child", "href": child_url}],
+        },
+        child_url: _collection("linked", {}),
+    }
+
+    with pytest.raises(ValueError, match="escapes catalog root"):
+        download_registry_catalog(
+            root_url,
+            output_dir,
+            fetch_json=lambda url: responses[url],
+        )
+
+    assert not (outside_dir / "collection.json").exists()
+
+
+def test_download_registry_catalog_rejects_local_path_collisions(tmp_path: Path) -> None:
+    root_url = "https://example.test/demo/catalog.json"
+    first_url = "https://example.test/demo/collection.json?version=1"
+    second_url = "https://example.test/demo/collection.json?version=2"
+    responses = {
+        root_url: {
+            "type": "Catalog",
+            "id": "demo",
+            "links": [
+                {"rel": "child", "href": first_url},
+                {"rel": "child", "href": second_url},
+            ],
+        },
+        first_url: _collection("first", {}),
+        second_url: _collection("second", {}),
+    }
+    fetched_urls: list[str] = []
+
+    def fetch_json(url: str) -> dict[str, Any]:
+        fetched_urls.append(url)
+        return responses[url]
+
+    with pytest.raises(ValueError, match="same local path"):
+        download_registry_catalog(root_url, tmp_path, fetch_json=fetch_json)
+
+    assert fetched_urls == [root_url, first_url]
 
 
 def test_download_registry_catalog_recurses_nested_catalogs_and_uses_fallback_id(
