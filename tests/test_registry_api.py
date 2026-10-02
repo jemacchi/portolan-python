@@ -280,3 +280,19 @@ def test_download_registry_catalog_handles_collections_without_asset_objects(
         (catalog_root / "roads" / "collection.json").read_text(encoding="utf-8")
     )
     assert collection["assets"] == []
+
+
+def test_download_registry_catalog_rejects_id_outside_output_directory(tmp_path: Path) -> None:
+    catalog = {"type": "Catalog", "id": "../../outside", "links": []}
+
+    with pytest.raises(ValueError, match="safe directory name"):
+        download_registry_catalog(
+            "https://example.test/demo/catalog.json",
+            tmp_path,
+            fetch_json=lambda url: catalog,
+        )
+
+
+def test_download_registry_catalog_rejects_non_http_url(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="must use HTTP or HTTPS"):
+        download_registry_catalog("file:///tmp/catalog.json", tmp_path)

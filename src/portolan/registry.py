@@ -73,21 +73,31 @@ def download_registry_catalog(
     fetch_json: Callable[[str], JsonObject] | None = None,
 ) -> Path:
     """Download a published catalog snapshot for local workflows."""
+    _validate_remote_url(catalog_url)
     fetch = fetch_json or _fetch_json
     catalog = fetch(catalog_url)
     catalog_id = str(catalog.get("id") or _fallback_catalog_id(catalog_url))
+    if catalog_id in {"", ".", ".."} or Path(catalog_id).name != catalog_id or "\\" in catalog_id:
+        raise ValueError(f"Catalog id must be a safe directory name: {catalog_id}")
     catalog_root = output_dir / catalog_id
     _write_catalog_tree(catalog_url, catalog, catalog_url, catalog_root, fetch)
     return catalog_root
 
 
 def _fetch_json(url: str) -> JsonObject:
+    _validate_remote_url(url)
     request = Request(url, headers={"User-Agent": "portolan-python"})
     with urlopen(request, timeout=30) as response:
         data = json.loads(response.read().decode("utf-8"))
     if not isinstance(data, dict):
         raise TypeError(f"Expected JSON object from {url}")
     return data
+
+
+def _validate_remote_url(url: str) -> None:
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError(f"Registry URL must use HTTP or HTTPS: {url}")
 
 
 def _write_catalog_tree(
