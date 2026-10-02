@@ -106,7 +106,12 @@ def _write_catalog_tree(
     root_url: str,
     output_root: Path,
     fetch_json: Callable[[str], JsonObject],
+    visited: set[str] | None = None,
 ) -> None:
+    if visited is None:
+        visited = set()
+    visited.add(document_url)
+
     relative_path = _relative_document_path(root_url, document_url)
     target = output_root / relative_path
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -121,9 +126,11 @@ def _write_catalog_tree(
         if not isinstance(href, str):
             continue
         child_url = urljoin(document_url, href)
+        if child_url in visited:
+            continue
         child = fetch_json(child_url)
         if child.get("type") in {"Catalog", "Collection"}:
-            _write_catalog_tree(child_url, child, root_url, output_root, fetch_json)
+            _write_catalog_tree(child_url, child, root_url, output_root, fetch_json, visited)
 
 
 def _with_absolute_asset_hrefs(document_url: str, collection: JsonObject) -> JsonObject:

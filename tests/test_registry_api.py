@@ -169,6 +169,33 @@ def test_download_registry_catalog_writes_snapshot_with_absolute_asset_hrefs(
     assert collection["assets"]["data"]["href"] == "https://example.test/demo/roads/roads.parquet"
 
 
+def test_download_registry_catalog_skips_child_cycles(tmp_path: Path) -> None:
+    root_url = "https://example.test/demo/catalog.json"
+    child_url = "https://example.test/demo/roads/collection.json"
+    responses = {
+        root_url: {
+            "type": "Catalog",
+            "id": "demo",
+            "links": [{"rel": "child", "href": "./roads/collection.json"}],
+        },
+        child_url: {
+            **_collection("roads", {}),
+            "links": [{"rel": "child", "href": "../catalog.json"}],
+        },
+    }
+    fetched_urls: list[str] = []
+
+    def fetch_json(url: str) -> dict[str, Any]:
+        fetched_urls.append(url)
+        if fetched_urls.count(url) > 1:
+            raise AssertionError(f"Fetched document twice: {url}")
+        return responses[url]
+
+    download_registry_catalog(root_url, tmp_path, fetch_json=fetch_json)
+
+    assert fetched_urls == [root_url, child_url]
+
+
 def test_download_registry_catalog_recurses_nested_catalogs_and_uses_fallback_id(
     tmp_path: Path,
 ) -> None:
