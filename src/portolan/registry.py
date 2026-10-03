@@ -215,32 +215,54 @@ def _write_catalog_tree(
     target.parent.mkdir(parents=True, exist_ok=True)
     if document.get("type") == "Collection":
         document = _with_absolute_asset_hrefs(document_url, document)
+
+    links = document.get("links")
+    if isinstance(links, list):
+        rewritten_links: list[Any] = []
+        for link in links:
+            rewritten_link = link
+            if isinstance(link, dict) and link.get("rel") == "child":
+                href = link.get("href")
+                if isinstance(href, str):
+                    child_url = urljoin(document_url, href)
+                    child_target = _target_document_path(root_url, child_url, output_root)
+                    owner = targets.get(child_target)
+                    if owner is not None and owner != child_url:
+                        raise ValueError(
+                            "Registry documents map to the same local path: "
+                            f"{owner}, {child_url}"
+                        )
+                    if child_url in visited:
+                        if owner == child_url:
+                            rewritten_link = {
+                                **link,
+                                "href": _relative_local_href(target, child_target),
+                            }
+                    else:
+                        child = fetch_json(child_url)
+                        if child.get("type") in {"Catalog", "Collection"}:
+                            _write_catalog_tree(
+                                child_url,
+                                child,
+                                root_url,
+                                output_root,
+                                fetch_json,
+                                visited,
+                                targets,
+                            )
+                            rewritten_link = {
+                                **link,
+                                "href": _relative_local_href(target, child_target),
+                            }
+            rewritten_links.append(rewritten_link)
+        document = {**document, "links": rewritten_links}
+
     target.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
 
-    for link in document.get("links", []):
-        if not isinstance(link, dict) or link.get("rel") != "child":
-            continue
-        href = link.get("href")
-        if not isinstance(href, str):
-            continue
-        child_url = urljoin(document_url, href)
-        if child_url in visited:
-            continue
-        child_target = _target_document_path(root_url, child_url, output_root)
-        owner = targets.get(child_target)
-        if owner is not None and owner != child_url:
-            raise ValueError(f"Registry documents map to the same local path: {owner}, {child_url}")
-        child = fetch_json(child_url)
-        if child.get("type") in {"Catalog", "Collection"}:
-            _write_catalog_tree(
-                child_url,
-                child,
-                root_url,
-                output_root,
-                fetch_json,
-                visited,
-                targets,
-            )
+
+def _relative_local_href(parent_target: Path, child_target: Path) -> str:
+    relative_path = os.path.relpath(child_target, start=parent_target.parent)
+    return Path(relative_path).as_posix()
 
 
 def _with_absolute_asset_hrefs(document_url: str, collection: JsonObject) -> JsonObject:

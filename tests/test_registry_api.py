@@ -189,8 +189,49 @@ def test_download_registry_catalog_writes_snapshot_with_absolute_asset_hrefs(
     collection = json.loads(
         (catalog_root / "roads" / "collection.json").read_text(encoding="utf-8")
     )
-    assert catalog["links"][0]["href"] == "./roads/collection.json"
+    assert catalog["links"][0]["href"] == "roads/collection.json"
     assert collection["assets"]["data"]["href"] == "https://example.test/demo/roads/roads.parquet"
+
+
+def test_download_registry_catalog_rewrites_downloaded_children_to_local_hrefs(
+    tmp_path: Path,
+) -> None:
+    root_url = "https://example.test/demo/catalog.json"
+    child_url = "https://example.test/demo/roads/collection.json"
+    item_url = "https://example.test/demo/roads/item.json"
+    responses = {
+        root_url: {
+            "type": "Catalog",
+            "id": "demo",
+            "links": [
+                {"rel": "self", "href": root_url},
+                {"rel": "child", "href": child_url},
+                {"rel": "child", "href": item_url},
+            ],
+        },
+        child_url: {
+            **_collection("roads", {}),
+            "links": [{"rel": "child", "href": root_url}],
+        },
+        item_url: {"type": "Feature", "id": "road-1"},
+    }
+
+    catalog_root = download_registry_catalog(
+        root_url,
+        tmp_path,
+        fetch_json=lambda url: responses[url],
+    )
+
+    catalog = json.loads((catalog_root / "catalog.json").read_text(encoding="utf-8"))
+    collection = json.loads(
+        (catalog_root / "roads" / "collection.json").read_text(encoding="utf-8")
+    )
+    assert catalog["links"] == [
+        {"rel": "self", "href": root_url},
+        {"rel": "child", "href": "roads/collection.json"},
+        {"rel": "child", "href": item_url},
+    ]
+    assert collection["links"] == [{"rel": "child", "href": "../catalog.json"}]
 
 
 def test_download_registry_catalog_skips_child_cycles(tmp_path: Path) -> None:
