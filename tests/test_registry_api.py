@@ -234,6 +234,78 @@ def test_download_registry_catalog_rewrites_downloaded_children_to_local_hrefs(
     assert collection["links"] == [{"rel": "child", "href": "../catalog.json"}]
 
 
+def test_download_registry_catalog_makes_non_downloaded_relative_links_absolute(
+    tmp_path: Path,
+) -> None:
+    root_url = "https://example.test/demo/catalog.json"
+    collection_url = "https://example.test/demo/roads/collection.json"
+    feature_url = "https://example.test/demo/roads/features/road-1.json"
+    responses = {
+        root_url: {
+            "type": "Catalog",
+            "id": "demo",
+            "links": [{"rel": "child", "href": "./roads/collection.json"}],
+        },
+        collection_url: {
+            **_collection("roads", {}),
+            "links": [
+                {"rel": "item", "href": "./items/road-1.json"},
+                {"rel": "child", "href": "./features/road-1.json"},
+            ],
+        },
+        feature_url: {"type": "Feature", "id": "road-1"},
+    }
+
+    catalog_root = download_registry_catalog(
+        root_url,
+        tmp_path,
+        fetch_json=lambda url: responses[url],
+    )
+
+    collection = json.loads(
+        (catalog_root / "roads" / "collection.json").read_text(encoding="utf-8")
+    )
+    assert collection["links"] == [
+        {"rel": "item", "href": "https://example.test/demo/roads/items/road-1.json"},
+        {"rel": "child", "href": feature_url},
+    ]
+
+
+def test_download_registry_catalog_keeps_downloaded_root_and_parent_links_local(
+    tmp_path: Path,
+) -> None:
+    root_url = "https://example.test/demo/catalog.json"
+    collection_url = "https://example.test/demo/roads/collection.json"
+    responses = {
+        root_url: {
+            "type": "Catalog",
+            "id": "demo",
+            "links": [{"rel": "child", "href": "./roads/collection.json"}],
+        },
+        collection_url: {
+            **_collection("roads", {}),
+            "links": [
+                {"rel": "root", "href": root_url},
+                {"rel": "parent", "href": root_url},
+            ],
+        },
+    }
+
+    catalog_root = download_registry_catalog(
+        root_url,
+        tmp_path,
+        fetch_json=lambda url: responses[url],
+    )
+
+    collection = json.loads(
+        (catalog_root / "roads" / "collection.json").read_text(encoding="utf-8")
+    )
+    assert collection["links"] == [
+        {"rel": "root", "href": "../catalog.json"},
+        {"rel": "parent", "href": "../catalog.json"},
+    ]
+
+
 def test_download_registry_catalog_skips_child_cycles(tmp_path: Path) -> None:
     root_url = "https://example.test/demo/catalog.json"
     child_url = "https://example.test/demo/roads/collection.json"

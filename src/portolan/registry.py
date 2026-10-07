@@ -221,16 +221,27 @@ def _write_catalog_tree(
         rewritten_links: list[Any] = []
         for link in links:
             rewritten_link = link
-            if isinstance(link, dict) and link.get("rel") == "child":
-                href = link.get("href")
-                if isinstance(href, str):
-                    child_url = urljoin(document_url, href)
+            if isinstance(link, dict) and isinstance(link.get("href"), str):
+                href = link["href"]
+                linked_url = urljoin(document_url, href)
+                rewritten_link = {**link, "href": linked_url}
+                if link.get("rel") in {"root", "parent"}:
+                    linked_target = next(
+                        (path for path, owner_url in targets.items() if owner_url == linked_url),
+                        None,
+                    )
+                    if linked_target is not None:
+                        rewritten_link = {
+                            **link,
+                            "href": _relative_local_href(target, linked_target),
+                        }
+                if link.get("rel") == "child":
+                    child_url = linked_url
                     child_target = _target_document_path(root_url, child_url, output_root)
                     owner = targets.get(child_target)
                     if owner is not None and owner != child_url:
                         raise ValueError(
-                            "Registry documents map to the same local path: "
-                            f"{owner}, {child_url}"
+                            f"Registry documents map to the same local path: {owner}, {child_url}"
                         )
                     if child_url in visited:
                         if owner == child_url:
