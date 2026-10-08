@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import shutil
 import tempfile
@@ -31,6 +32,14 @@ class RegistryCatalogEntry:
     url: str
     title: str | None = None
     status: str | None = None
+    bbox: tuple[float, float, float, float] | None = None
+    licenses: tuple[str, ...] = ()
+    collection_count: int | None = None
+    feature_count: int | None = None
+    total_size_bytes: int | None = None
+    updated: str | None = None
+    logo_url: str | None = None
+    failure_reason: str | None = None
 
 
 def load_registry_entries(
@@ -58,17 +67,51 @@ def load_registry_entries(
         if catalog_ids is not None and registry_id not in catalog_ids:
             continue
         title = link.get("title")
+        licenses = link.get("portolan_registry:licenses")
+        logo = link.get("portolan_registry:logo")
         entries.append(
             RegistryCatalogEntry(
                 id=registry_id,
                 url=urljoin(registry_url, href),
                 title=title if isinstance(title, str) else None,
                 status=status if isinstance(status, str) else None,
+                bbox=_horizontal_bbox(link.get("bbox")),
+                licenses=tuple(sorted(key for key in licenses if isinstance(key, str)))
+                if isinstance(licenses, dict)
+                else (),
+                collection_count=_optional_int(link.get("portolan_registry:collection_count")),
+                feature_count=_optional_int(link.get("portolan_registry:feature_count")),
+                total_size_bytes=_optional_int(link.get("portolan_registry:total_size_bytes")),
+                updated=_optional_str(link.get("portolan_registry:updated")),
+                logo_url=_optional_str(logo.get("href")) if isinstance(logo, dict) else None,
+                failure_reason=_optional_str(link.get("portolan_registry:failure_reason")),
             )
         )
         if limit is not None and len(entries) >= limit:
             break
     return entries
+
+
+def _optional_int(value: object) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _optional_str(value: object) -> str | None:
+    return value if isinstance(value, str) and value else None
+
+
+def _horizontal_bbox(value: object) -> tuple[float, float, float, float] | None:
+    if not isinstance(value, (list, tuple)) or len(value) < 4 or len(value) % 2:
+        return None
+    if not all(
+        isinstance(coordinate, (int, float))
+        and not isinstance(coordinate, bool)
+        and math.isfinite(coordinate)
+        for coordinate in value
+    ):
+        return None
+    half = len(value) // 2
+    return (float(value[0]), float(value[1]), float(value[half]), float(value[half + 1]))
 
 
 def download_registry_catalog(

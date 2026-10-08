@@ -40,8 +40,19 @@ def test_load_registry_entries_filters_to_valid_children() -> None:
                 "rel": "child",
                 "href": "https://example.test/a/catalog.json",
                 "title": "A",
+                "bbox": [-71.0, -35.0, -70.0, -34.0],
                 "portolan_registry:id": "catalog-a",
                 "portolan_registry:status": "valid",
+                "portolan_registry:licenses": {"ODbL-1.0": 2, "CC-BY-4.0": 1},
+                "portolan_registry:collection_count": 3,
+                "portolan_registry:feature_count": 42,
+                "portolan_registry:total_size_bytes": 2048,
+                "portolan_registry:updated": "2026-10-08T00:00:00Z",
+                "portolan_registry:logo": {
+                    "href": "https://example.test/a/logo.png",
+                    "type": "image/png",
+                },
+                "portolan_registry:failure_reason": None,
             },
             {
                 "rel": "child",
@@ -59,6 +70,48 @@ def test_load_registry_entries_filters_to_valid_children() -> None:
     assert [(entry.id, entry.url, entry.title, entry.status) for entry in entries] == [
         ("catalog-a", "https://example.test/a/catalog.json", "A", "valid")
     ]
+    assert entries[0].bbox == (-71.0, -35.0, -70.0, -34.0)
+    assert entries[0].licenses == ("CC-BY-4.0", "ODbL-1.0")
+    assert entries[0].collection_count == 3
+    assert entries[0].feature_count == 42
+    assert entries[0].total_size_bytes == 2048
+    assert entries[0].updated == "2026-10-08T00:00:00Z"
+    assert entries[0].logo_url == "https://example.test/a/logo.png"
+    assert entries[0].failure_reason is None
+
+
+def test_load_registry_entries_ignores_malformed_optional_metadata() -> None:
+    registry = {
+        "links": [
+            {
+                "rel": "child",
+                "href": "https://example.test/a/catalog.json",
+                "bbox": [True, -35.0, -70.0, -34.0],
+                "portolan_registry:id": "catalog-a",
+                "portolan_registry:status": "valid",
+                "portolan_registry:licenses": ["not", "a", "mapping"],
+                "portolan_registry:collection_count": True,
+                "portolan_registry:feature_count": "many",
+                "portolan_registry:total_size_bytes": 1.5,
+                "portolan_registry:updated": 7,
+                "portolan_registry:logo": {"href": 9},
+                "portolan_registry:failure_reason": [],
+            }
+        ]
+    }
+
+    (entry,) = load_registry_entries(
+        "https://registry.test/catalogs.json", fetch_json=lambda url: registry
+    )
+
+    assert entry.bbox is None
+    assert entry.licenses == ()
+    assert entry.collection_count is None
+    assert entry.feature_count is None
+    assert entry.total_size_bytes is None
+    assert entry.updated is None
+    assert entry.logo_url is None
+    assert entry.failure_reason is None
 
 
 def test_load_registry_entries_resolves_relative_child_urls() -> None:
