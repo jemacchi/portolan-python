@@ -61,6 +61,9 @@ def load_registry_entries(
         registry_id = link.get("portolan_registry:id")
         if not isinstance(href, str) or not isinstance(registry_id, str):
             continue
+        resolved_url = urljoin(registry_url, href)
+        if not _is_remote_url(resolved_url):
+            continue
         status = link.get("portolan_registry:status")
         if status != "valid" and not include_stale:
             continue
@@ -72,7 +75,7 @@ def load_registry_entries(
         entries.append(
             RegistryCatalogEntry(
                 id=registry_id,
-                url=urljoin(registry_url, href),
+                url=resolved_url,
                 title=title if isinstance(title, str) else None,
                 status=status if isinstance(status, str) else None,
                 bbox=_horizontal_bbox(link.get("bbox")),
@@ -112,6 +115,11 @@ def _horizontal_bbox(value: object) -> tuple[float, float, float, float] | None:
         return None
     half = len(value) // 2
     return (float(value[0]), float(value[1]), float(value[half]), float(value[half + 1]))
+
+
+def _is_remote_url(url: str) -> bool:
+    parsed = urlparse(url)
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
 
 def download_registry_catalog(

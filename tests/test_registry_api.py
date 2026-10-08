@@ -180,6 +180,12 @@ def test_load_registry_entries_skips_invalid_link_shapes() -> None:
             {"rel": "child", "href": 5, "portolan_registry:id": "bad-href"},
             {
                 "rel": "child",
+                "href": "javascript:alert(1)",
+                "portolan_registry:id": "unsafe-scheme",
+                "portolan_registry:status": "valid",
+            },
+            {
+                "rel": "child",
                 "href": "https://example.test/no-status/catalog.json",
                 "title": 7,
                 "portolan_registry:id": "no-status",

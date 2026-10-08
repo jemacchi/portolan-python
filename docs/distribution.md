@@ -8,8 +8,8 @@ preferred package index for published versions.
 Push a tag that matches the version in `pyproject.toml`:
 
 ```bash
-git tag v0.1.7
-git push origin v0.1.7
+git tag v0.1.8
+git push origin v0.1.8
 ```
 
 The release workflow runs the tests, builds both distributions, checks their
@@ -25,7 +25,7 @@ Install the wheel attached to a release:
 
 ```bash
 python -m pip install \
-  https://github.com/jemacchi/portolan-python/releases/download/v0.1.7/portolan_python-0.1.7-py3-none-any.whl
+  https://github.com/jemacchi/portolan-python/releases/download/v0.1.8/portolan_python-0.1.8-py3-none-any.whl
 ```
 
 This path needs no package index account.
@@ -35,7 +35,7 @@ This path needs no package index account.
 Install a published version from PyPI with:
 
 ```bash
-python -m pip install portolan-python==0.1.7
+python -m pip install portolan-python==0.1.8
 ```
 
 Omit the version constraint to install the latest published version.
